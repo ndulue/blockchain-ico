@@ -1,10 +1,13 @@
 //import { assert } from 'chai';
 import ether from './helpers/ether';
 import EVMRevert from './helpers/EVMRevert';
+import increaseTime, { duration } from './helpers/increaseTime';
+import latestTime from './helpers/lastestTime';
 const BigNumber = web3.BigNumber;
 
 const DappToken = artifacts.require('DappToken');
 const DappTokenCrowdsale = artifacts.require('DappTokenCrowdsale');
+const RefundVault = artifacts.require('./RefundVault');
 
 require('chai')
     .use(require('chai-as-promised'))
@@ -29,6 +32,9 @@ contract('DappTokenCrowdsale', function([_, wallet, investor1, investor2]) {
         this.rate = 500;
         this.wallet = wallet;
         this.cap = ether(100);
+        this.openingTime = latestTime() + duration.weeks(1);
+        this.closingTime = this.openingTime + duration.weeks(2);
+        this.goal = ether(50);
 
         // Investor caps
         this.investorMinCap = ether(0.02);
@@ -38,10 +44,23 @@ contract('DappTokenCrowdsale', function([_, wallet, investor1, investor2]) {
             this.rate,
             this.wallet,
             this.token.address,
-            this.cap
+            this.cap,
+            this.openingTime,
+            this.closingTime,
+            this.goal
         );
         //Transfer token ownership to crowdsale
         await this.token.transferOwnership(this.crowdsale.address);
+
+        //Add investors to whitelist
+        await this.crowdsale.addManyToWhitelist([investor1, investor2]);
+
+        //Track refund vault
+        this.vaultAddress = await this.crowdsale.vault();
+        this.vault = RefundVault.at(this.vaultAddress);
+
+        //Advance time to crowdsale start
+        await increaseTimeTo(this.openingTime + 1);
     });
 
     describe('crowdsale', function() {
@@ -116,7 +135,33 @@ contract('DappTokenCrowdsale', function([_, wallet, investor1, investor2]) {
                 const value2 = ether(49);
                 await this.crowdsale.buyTokens(investor1, {value: value2, from: investor1 }).should.be.fulfilled;
             });
-        });        
+        });    
+        
+        describe('timed crowdsale', function() {
+            it('is open', async function() {
+                const isClosed = await this.crowdsale.hasClosed();
+                isClosed.should.be.false;
+            });
+        });    
+        
+        describe('whiteisted crowdsale', function() {
+            it('rejects contributions from non-whitelisted investors', async function() {
+                const isClosed = _;
+                await this.crowdsale.buyTokens(notWhitelisted, { value: ether(1), from: notWhitelisted }).should.be.rejectedWith(EVMRevert);
+            });
+        });
+
+        describe('refundable crowdsale', function() {
+            beforeEach(async function(){
+                await this.crowdsale.buyTokens(investor1, { value: ether(1), from: investor1 });
+            });
+
+            describe('during crowdsale', function() {
+                it('prevents the investor from claiming refund', async function() {
+                    await this.vault.refund(investor1, { from: investor1}).should.be.rejectedWith(EVMRevert);
+                });
+            });
+        });
 
         describe('when the contribution is within the valid range', function () {
             

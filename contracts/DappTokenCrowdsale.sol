@@ -5,8 +5,9 @@ import "openzeppelin-solidity/contracts/crowdsale/emission/MintedCrowdsale.sol";
 import "openzeppelin-solidity/contracts/crowdsale/validation/CappedCrowdsale.sol";
 import "openzeppelin-solidity/contracts/crowdsale/validation/TimedCrowdsale.sol";
 import "openzeppelin-solidity/contracts/crowdsale/validation/WhitelistedCrowdsale.sol";
+import "openzeppelin-solidity/contracts/crowdsale/distribution/RefundableCrowdsale.sol";
 
-contract DappTokenCrowdsale is Crowdsale, MintedCrowdsale, CappedCrowdsale, TimedCrowdsale, WhitelistedCrowdsale{
+contract DappTokenCrowdsale is Crowdsale, MintedCrowdsale, CappedCrowdsale, TimedCrowdsale, WhitelistedCrowdsale, RefundableCrowdsale{
 
     //Minimum investor contribution - 0.002 Ether
     //Minimum investor contribution - 50Ether
@@ -22,30 +23,27 @@ contract DappTokenCrowdsale is Crowdsale, MintedCrowdsale, CappedCrowdsale, Time
         ERC20 _token,
         uint256 _cap,
         uint256 _openingTime,
-        uint256 _closingTime
+        uint256 _closingTime,
+        uint256 _goal
         )  
         
         Crowdsale(_rate, _wallet, _token) 
         CappedCrowdsale(_cap)
         TimedCrowdsale(_openingTime, _closingTime)
+        RefundableCrowdsale(_goal)
         public {
-
+            require(_goal <= _cap);
         }
 
         //@dev returns the amount contributed so far by a specific user
         //@param _beneficiary address of contributor
         //@return user contributions so far
 
-        function getUserContribution(address _beneficiary)
-            public view returns (uint256)
-        {
+        function getUserContribution(address _beneficiary) public view returns (uint256) {
             return contributions[_beneficiary];
         }
     
-        function _preValidatePurchase(
-            address _beneficiary, 
-            uint256 _weiAmount
-        ) internal {
+        function _preValidatePurchase(address _beneficiary, uint256 _weiAmount ) internal {
             super._preValidatePurchase(_beneficiary, _weiAmount);
             uint256 _existingContribution = contributions[_beneficiary];
             uint256 _newContribution = _existingContribution.add(_weiAmount);
